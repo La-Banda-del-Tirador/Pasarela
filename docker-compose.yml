@@ -3,8 +3,8 @@ services:
   # ── API Go ────────────────────────────────────────────────────────────────────
   backend:
     build:
-      context: .
-      dockerfile: Dockerfile.backend
+      context: ./backend
+      dockerfile: Dockerfile
     ports:
       - "9191:9191"            # API directa: http://localhost:9191
     env_file: .env
@@ -21,8 +21,8 @@ services:
   # ── Frontend React + nginx ────────────────────────────────────────────────────
   frontend:
     build:
-      context: .
-      dockerfile: Dockerfile.frontend
+      context: ./frontend
+      dockerfile: Dockerfile
     ports:
       - "9292:80"              # App completa: http://localhost:9292
     depends_on:
