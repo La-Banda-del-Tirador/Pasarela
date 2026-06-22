@@ -1,0 +1,41 @@
+services:
+
+  # ── API Go ────────────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "9191:9191"            # API directa: http://localhost:9191
+    env_file: .env
+    environment:
+      PORT: "9191"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9191/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # ── Frontend React + nginx ────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "9292:80"              # App completa: http://localhost:9292
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+# Uso:
+#   docker compose up --build        # primera vez
+#   docker compose up -d             # en background
+#   docker compose logs -f backend   # ver logs del API
+#
+# Rutas disponibles desde el host:
+#   http://localhost:9191/api/payments       API directa (Postman)
+#   http://localhost:9292/pay/{id}           Pantalla de pago
+#   http://localhost:9292/api/payments       API a través de nginx (misma respuesta)

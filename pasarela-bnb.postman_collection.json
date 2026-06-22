@@ -1,0 +1,832 @@
+{
+  "info": {
+    "name": "Pasarela BNB Bolivia",
+    "description": "Colección completa para probar la pasarela de pagos QR con BNB.\n\n## Puertos (Docker Compose)\n- `9191` → API Go directa (`http://localhost:9191`) — usar aquí en Postman\n- `9292` → Frontend nginx — pantalla de pago, iFrame, integración merchant\n\n## Sin Docker (desarrollo local)\n- Cambiar `base_url` al puerto que use el Go server (ej: `http://localhost:9090`)\n\n## Variables de colección\n- `base_url` — URL base del API\n- `payment_id` — se llena automáticamente al crear un pago\n- `qr_id` — ID del QR en BNB\n- `pay_url` — URL de la pantalla de pago (para abrir en el navegador)\n\n## Flujos\n1. Crear pago → ver QR → simular webhook → verificar `paid`\n2. Crear pago → cancelar → verificar `cancelled`\n3. Abrir `pay_url` en el navegador para ver la pantalla de pago",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "pasarela-bnb-bolivia-2026"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:9191",
+      "type": "string",
+      "description": "URL base del API. Docker: 9191. Dev local: el puerto que uses en PORT env var."
+    },
+    {
+      "key": "payment_id",
+      "value": "",
+      "type": "string",
+      "description": "Se llena automáticamente al ejecutar cualquier 'Crear Pago'"
+    },
+    {
+      "key": "qr_id",
+      "value": "",
+      "type": "string",
+      "description": "ID del QR en BNB — se llena automáticamente"
+    },
+    {
+      "key": "pay_url",
+      "value": "",
+      "type": "string",
+      "description": "URL completa de la pantalla de pago. Abrir en el navegador o pasar a un iFrame."
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Health Check",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Servidor activo', () => pm.response.to.have.status(200));",
+                  "pm.test('Status ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Verifica que el servidor esté corriendo."
+          },
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"status\":\"ok\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. Pagos",
+      "item": [
+        {
+          "name": "Crear Pago (BOB)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "pm.test('Respuesta tiene paymentId, qrImage y payUrl', () => {",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.paymentId).to.be.a('string').and.not.empty;",
+                  "    pm.expect(j.qrId).to.be.a('string').and.not.empty;",
+                  "    pm.expect(j.qrImage).to.be.a('string').and.not.empty;",
+                  "    pm.expect(j.payUrl).to.be.a('string').and.include('/pay/');",
+                  "    pm.expect(j.status).to.eql('pending');",
+                  "});",
+                  "",
+                  "pm.test('Monto y moneda correctos', () => {",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.amount).to.eql(75);",
+                  "    pm.expect(j.currency).to.eql('BOB');",
+                  "});",
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('payment_id', j.paymentId);",
+                  "pm.collectionVariables.set('qr_id', j.qrId);",
+                  "pm.collectionVariables.set('pay_url', j.payUrl);",
+                  "console.log('payment_id:', j.paymentId);",
+                  "console.log('pay_url:', j.payUrl);",
+                  "console.log('Abrir en el navegador:', j.payUrl);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 75,\n  \"currency\": \"BOB\",\n  \"description\": \"Almuerzo Mesa 5\",\n  \"reference\": \"REST-2026-001\",\n  \"expiresAt\": \"2026-12-31\",\n  \"callbackUrl\": \"http://localhost:9292/gracias?order=REST-2026-001\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/payments",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments"]
+            },
+            "description": "Crea un pago QR.\n\n**Responde con:**\n- `paymentId` — ID interno\n- `payUrl` — URL de la pantalla de pago para redirigir al cliente\n- `qrImage` — PNG en base64 para mostrar directamente\n- `callbackUrl` — se devuelve al frontend para redirigir tras el pago\n\n**Guarda automáticamente** `payment_id`, `qr_id` y `pay_url`."
+          },
+          "response": [
+            {
+              "name": "Pago creado",
+              "status": "Created",
+              "code": 201,
+              "body": "{\n  \"paymentId\": \"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4\",\n  \"payUrl\": \"http://localhost:9191/pay/a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4\",\n  \"qrId\": \"187388\",\n  \"qrImage\": \"iVBORw0KGgoAAAANSUhEUgAA...\",\n  \"amount\": 75,\n  \"currency\": \"BOB\",\n  \"description\": \"Almuerzo Mesa 5\",\n  \"status\": \"pending\",\n  \"expiresAt\": \"2026-12-31\",\n  \"callbackUrl\": \"http://localhost:9292/gracias?order=REST-2026-001\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Crear Pago (USD)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Moneda USD', () => pm.expect(pm.response.json().currency).to.eql('USD'));",
+                  "pm.test('payUrl presente', () => pm.expect(pm.response.json().payUrl).to.include('/pay/'));",
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('payment_id', j.paymentId);",
+                  "pm.collectionVariables.set('qr_id', j.qrId);",
+                  "pm.collectionVariables.set('pay_url', j.payUrl);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 10.50,\n  \"currency\": \"USD\",\n  \"description\": \"Suscripcion mensual\",\n  \"reference\": \"SUB-USD-001\",\n  \"expiresAt\": \"2026-12-31\",\n  \"callbackUrl\": \"http://localhost:9292/gracias?order=SUB-USD-001\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/payments",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Crear Pago — sin callbackUrl ni expiresAt",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('expiresAt asignado automaticamente', () => {",
+                  "    pm.expect(pm.response.json().expiresAt).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('callbackUrl ausente en respuesta', () => {",
+                  "    pm.expect(pm.response.json().callbackUrl).to.be.undefined;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 50,\n  \"currency\": \"BOB\",\n  \"description\": \"Pago sin redirect ni fecha\",\n  \"reference\": \"TEST-MIN-001\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/payments",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments"]
+            },
+            "description": "Ambos campos son opcionales. `expiresAt` usa mañana como default. Sin `callbackUrl` no hay redirect tras el pago."
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar Pago",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Tiene qrImage y description', () => {",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.qrImage).to.be.a('string').and.not.empty;",
+                  "    pm.expect(j.description).to.be.a('string').and.not.empty;",
+                  "    pm.expect(j.expiresAt).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('Status valido', () => {",
+                  "    pm.expect(['pending','paid','expired','cancelled'])",
+                  "        .to.include(pm.response.json().status);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/payments/{{payment_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments", "{{payment_id}}"]
+            },
+            "description": "Consulta el estado. Incluye `qrImage`, `description`, `expiresAt`, `callbackUrl` — todos los datos que necesita el frontend React."
+          },
+          "response": [
+            {
+              "name": "Pendiente",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"paymentId\": \"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4\",\n  \"qrId\": \"187388\",\n  \"qrImage\": \"iVBORw0KGgoAAAANSUhEUgAA...\",\n  \"status\": \"pending\",\n  \"amount\": 75,\n  \"currency\": \"BOB\",\n  \"description\": \"Almuerzo Mesa 5\",\n  \"expiresAt\": \"2026-12-31\",\n  \"callbackUrl\": \"http://localhost:9292/gracias?order=REST-2026-001\"\n}"
+            },
+            {
+              "name": "Pagado",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"paymentId\": \"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4\",\n  \"qrId\": \"187388\",\n  \"qrImage\": \"iVBORw0KGgoAAAANSUhEUgAA...\",\n  \"status\": \"paid\",\n  \"amount\": 75,\n  \"currency\": \"BOB\",\n  \"description\": \"Almuerzo Mesa 5\",\n  \"expiresAt\": \"2026-12-31\",\n  \"paidAt\": \"2026-06-21T14:32:00Z\",\n  \"voucherId\": \"VCH-2026-001\",\n  \"payerName\": \"Maria Garcia\",\n  \"sourceBank\": 1\n}"
+            }
+          ]
+        },
+        {
+          "name": "Cancelar Pago",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Status cancelled', () => pm.expect(pm.response.json().status).to.eql('cancelled'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/payments/{{payment_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments", "{{payment_id}}"]
+            }
+          },
+          "response": [
+            {
+              "name": "Cancelado",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"status\":\"cancelled\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Webhook",
+      "item": [
+        {
+          "name": "Simular Pago Recibido",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.variables.set('transaction_datetime',",
+                  "    new Date().toISOString().replace('T',' ').substring(0,19));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('BNB espera success:true', () => {",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.success).to.eql(true);",
+                  "    pm.expect(j.message).to.eql('OK');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"QRId\": \"{{qr_id}}\",\n  \"Gloss\": \"Almuerzo Mesa 5\",\n  \"sourceBankId\": 1,\n  \"originName\": \"Juan Perez\",\n  \"VoucherId\": \"VCH-2026-TEST-001\",\n  \"TransactionDateTime\": \"{{transaction_datetime}}\",\n  \"additionalData\": \"REST-2026-001\",\n  \"amount\": 75,\n  \"currencyId\": 1\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/webhook/notification",
+              "host": ["{{base_url}}"],
+              "path": ["webhook", "notification"]
+            },
+            "description": "Simula la notificación que el BNB envía cuando se escanea y paga el QR.\n\nUsa `{{qr_id}}` guardado por 'Crear Pago'. Ejecutar ANTES de 'Consultar Pago' para ver el estado `paid`."
+          },
+          "response": [
+            {
+              "name": "OK",
+              "status": "OK",
+              "code": 200,
+              "body": "{\"success\":true,\"message\":\"OK\"}"
+            }
+          ]
+        },
+        {
+          "name": "Simular QR Desconocido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 incluso con QR desconocido', () => pm.response.to.have.status(200));",
+                  "pm.test('success:true para evitar reintentos del BNB', () => {",
+                  "    pm.expect(pm.response.json().success).to.eql(true);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"QRId\": \"999999\",\n  \"Gloss\": \"QR inexistente\",\n  \"sourceBankId\": 2,\n  \"originName\": \"Test\",\n  \"VoucherId\": \"VCH-FAKE-001\",\n  \"TransactionDateTime\": \"2026-06-21 10:00:00\",\n  \"additionalData\": \"ORDEN-FAKE\",\n  \"amount\": 100,\n  \"currencyId\": 1\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/webhook/notification",
+              "host": ["{{base_url}}"],
+              "path": ["webhook", "notification"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Flujo Completo — Pago Exitoso",
+      "description": "Ejecutar los 4 pasos en orden.\nDespués del Paso 1, abrir `{{pay_url}}` en el navegador para ver la pantalla de pago real.",
+      "item": [
+        {
+          "name": "Paso 1 — Crear Pago",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Pago creado', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('payment_id', j.paymentId);",
+                  "pm.collectionVariables.set('qr_id', j.qrId);",
+                  "pm.collectionVariables.set('pay_url', j.payUrl);",
+                  "console.log('✅ payment_id:', j.paymentId);",
+                  "console.log('🌐 Abrir en navegador:', j.payUrl);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 150,\n  \"currency\": \"BOB\",\n  \"description\": \"Pedido e-commerce #2026-999\",\n  \"reference\": \"ECOM-2026-999\",\n  \"expiresAt\": \"2026-12-31\",\n  \"callbackUrl\": \"http://localhost:9292/gracias?order=ECOM-2026-999\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/payments",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments"]
+            },
+            "description": "**Paso 1 de 4** — Crea el pago y guarda `payment_id`, `qr_id` y `pay_url`.\n\nTras ejecutar, copiar `pay_url` del log de la consola y abrirlo en el navegador para ver la pantalla de pago real."
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 2 — Verificar Estado (pending)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Estado pending', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('pending');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/payments/{{payment_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments", "{{payment_id}}"]
+            },
+            "description": "**Paso 2 de 4** — Confirma `pending` antes de simular el pago."
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 3 — BNB notifica pago recibido",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.variables.set('transaction_datetime',",
+                  "    new Date().toISOString().replace('T',' ').substring(0,19));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Webhook procesado', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().success).to.eql(true);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"QRId\": \"{{qr_id}}\",\n  \"Gloss\": \"Pedido e-commerce #2026-999\",\n  \"sourceBankId\": 1,\n  \"originName\": \"Maria Garcia\",\n  \"VoucherId\": \"VCH-2026-ECOM-999\",\n  \"TransactionDateTime\": \"{{transaction_datetime}}\",\n  \"additionalData\": \"ECOM-2026-999\",\n  \"amount\": 150,\n  \"currencyId\": 1\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/webhook/notification",
+              "host": ["{{base_url}}"],
+              "path": ["webhook", "notification"]
+            },
+            "description": "**Paso 3 de 4** — Simula que BNB notifica el pago de Maria Garcia. El frontend React que esté abierto en el navegador detectará el cambio automáticamente (polling cada 3s)."
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 4 — Verificar Estado (paid)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Estado paid', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('paid');",
+                  "});",
+                  "pm.test('Datos del pagador presentes', () => {",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.voucherId).to.be.a('string').and.not.empty;",
+                  "    pm.expect(j.payerName).to.be.a('string').and.not.empty;",
+                  "    pm.expect(j.paidAt).to.be.a('string').and.not.empty;",
+                  "});",
+                  "const j = pm.response.json();",
+                  "console.log('✅ Pago confirmado');",
+                  "console.log('   Pagador:', j.payerName);",
+                  "console.log('   Voucher:', j.voucherId);",
+                  "console.log('   Banco:', j.sourceBank);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/payments/{{payment_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments", "{{payment_id}}"]
+            },
+            "description": "**Paso 4 de 4** — Verifica `paid` con datos del pagador. En el navegador, el frontend ya mostró la pantalla de éxito y redirigió a `callbackUrl`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Flujo Completo — Cancelacion",
+      "item": [
+        {
+          "name": "Paso 1 — Crear Pago",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Pago creado', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('payment_id', j.paymentId);",
+                  "pm.collectionVariables.set('qr_id', j.qrId);",
+                  "pm.collectionVariables.set('pay_url', j.payUrl);",
+                  "console.log('payment_id:', j.paymentId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 200,\n  \"currency\": \"BOB\",\n  \"description\": \"Reserva cancelable\",\n  \"reference\": \"RESERVA-2026-001\",\n  \"expiresAt\": \"2026-12-31\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/payments",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 2 — Cancelar Pago",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Cancelado', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('cancelled');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/payments/{{payment_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments", "{{payment_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 3 — Verificar Estado (cancelled)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Estado cancelled', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('cancelled');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/payments/{{payment_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments", "{{payment_id}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Frontend / Integracion",
+      "description": "Verifica que la pantalla de pago se sirve correctamente y prueba la integración merchant.",
+      "item": [
+        {
+          "name": "Pantalla de Pago — via nginx (HTML)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Sirve HTML del SPA', () => {",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('text/html');",
+                  "    pm.expect(pm.response.text()).to.include('Pago QR');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:9292/pay/{{payment_id}}",
+              "host": ["http://localhost:9292"],
+              "path": ["pay", "{{payment_id}}"]
+            },
+            "description": "Verifica que nginx sirve el HTML del React SPA en `/pay/{id}`.\n\n**Requiere Docker Compose corriendo** (`docker compose up`).\n\nEste endpoint es el que el merchant debe redirigir al cliente, o embeber como iFrame:\n```html\n<iframe src=\"http://localhost:9292/pay/{{payment_id}}\"></iframe>\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "iFrame — ejemplo de integración merchant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('nginx accesible', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:9292/pay/{{payment_id}}",
+              "host": ["http://localhost:9292"],
+              "path": ["pay", "{{payment_id}}"]
+            },
+            "description": "## Integración para merchants\n\n### Opción 1 — Redirect (recomendada)\nEl merchant crea el pago desde su backend y redirige al cliente:\n```js\n// Backend del merchant\nconst res = await fetch('http://pasarela.com/api/payments', { method: 'POST', ... })\nconst { payUrl } = await res.json()\nres.redirect(payUrl)  // redirigir al cliente\n```\n\n### Opción 2 — iFrame embebido\n```html\n<iframe\n  src=\"http://localhost:9292/pay/{{payment_id}}\"\n  width=\"420\"\n  height=\"680\"\n  style=\"border:none; border-radius:20px; box-shadow:0 4px 24px rgba(0,0,0,.15)\">\n</iframe>\n```\n\n### Opción 3 — Modal/Popup\nAbrir `payUrl` en una ventana popup del navegador."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6. Errores y Validaciones",
+      "item": [
+        {
+          "name": "Error — Amount = 0",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Error menciona amount', () => pm.expect(pm.response.json().error).to.include('amount'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 0,\n  \"currency\": \"BOB\",\n  \"description\": \"Invalido\",\n  \"reference\": \"ERR-001\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/payments",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments"]
+            }
+          },
+          "response": [
+            {"name": "Error", "status": "Bad Request", "code": 400, "body": "{\"error\":\"amount debe ser mayor a 0\"}"}
+          ]
+        },
+        {
+          "name": "Error — Moneda invalida",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('Error menciona currency', () => pm.expect(pm.response.json().error).to.include('currency'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100,\n  \"currency\": \"EUR\",\n  \"description\": \"No soportado\",\n  \"reference\": \"ERR-002\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/payments",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments"]
+            }
+          },
+          "response": [
+            {"name": "Error", "status": "Bad Request", "code": 400, "body": "{\"error\":\"currency debe ser BOB o USD\"}"}
+          ]
+        },
+        {
+          "name": "Error — Description vacia",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('400 Bad Request', () => pm.response.to.have.status(400));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100,\n  \"currency\": \"BOB\",\n  \"description\": \"\",\n  \"reference\": \"ERR-003\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/payments",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments"]
+            }
+          },
+          "response": [
+            {"name": "Error", "status": "Bad Request", "code": 400, "body": "{\"error\":\"description es requerido\"}"}
+          ]
+        },
+        {
+          "name": "Error — Pago no encontrado (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 Not Found', () => pm.response.to.have.status(404));",
+                  "pm.test('Mensaje de error', () => pm.expect(pm.response.json().error).to.include('no encontrado'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/payments/00000000000000000000000000000000",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments", "00000000000000000000000000000000"]
+            }
+          },
+          "response": [
+            {"name": "No encontrado", "status": "Not Found", "code": 404, "body": "{\"error\":\"pago no encontrado\"}"}
+          ]
+        },
+        {
+          "name": "Error — Cancelar pago ya pagado (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('409 Conflict', () => pm.response.to.have.status(409));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/payments/{{payment_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments", "{{payment_id}}"]
+            },
+            "description": "Ejecutar DESPUÉS del flujo completo (pago exitoso). Intentar cancelar un pago `paid` devuelve 409."
+          },
+          "response": [
+            {"name": "Conflict", "status": "Conflict", "code": 409, "body": "{\"error\":\"solo se pueden cancelar pagos en estado pending\"}"}
+          ]
+        }
+      ]
+    }
+  ]
+}
